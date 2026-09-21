@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Inter-House Tournament Manager</title>
+<style>
+:root{--bg:#f4f7fb;--card:#fff;--text:#172033;--muted:#6b7280;--line:#e5e7eb;--accent:#2563eb;--danger:#dc2626;--success:#16a34a}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--bg);color:var(--text)}
+header{background:#111827;color:white;padding:20px 24px;position:sticky;top:0;z-index:10;box-shadow:0 3px 15px #0002;display:flex;justify-content:space-between;align-items:center}
+header h1{margin:0 0 4px;font-size:22px}header p{margin:0;color:#cbd5e1;font-size:13px}
+nav{display:flex;gap:8px;overflow:auto;padding:12px 20px;background:#fff;border-bottom:1px solid var(--line)}
+nav button,.sport-btn,.tab{border:0;background:#eef2ff;color:#334155;padding:10px 14px;border-radius:10px;font-weight:700;cursor:pointer;white-space:nowrap}
+nav button.active,.sport-btn.active,.tab.active{background:var(--accent);color:white}
+main{max-width:1200px;margin:auto;padding:20px}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
+button{font:inherit}.primary{background:var(--accent);color:white;border:0;padding:10px 14px;border-radius:9px;cursor:pointer;font-weight:700}
+.secondary{background:white;border:1px solid var(--line);padding:10px 14px;border-radius:9px;cursor:pointer}
+.danger{color:var(--danger);border-color:#fecaca}
+.auth-btn{background:#374151;color:#f9fafb;border:1px solid #4b5563;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer}
+.auth-badge{font-size:12px;padding:4px 8px;border-radius:6px;margin-left:8px;background:#374151}
+.admin-badge{background:var(--success);color:white}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:0 4px 14px #00000008}
+.card h2,.card h3{margin-top:0}.stat{font-size:28px;font-weight:800}.muted{color:var(--muted)}
+table{width:100%;border-collapse:collapse;background:white;border-radius:14px;overflow:hidden}th,td{padding:11px 10px;border-bottom:1px solid var(--line);text-align:center}th{background:#f8fafc;font-size:13px}td:first-child,th:first-child{text-align:left}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.form input,.form select{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;background:white}
+.score-row{display:grid;grid-template-columns:1fr 90px 90px 1fr 100px;gap:8px;align-items:center;padding:10px;border-bottom:1px solid var(--line)}.score-row input{width:100%;padding:8px;border:1px solid #d1d5db;border-radius:7px}
+.badge{display:inline-block;padding:4px 8px;border-radius:99px;background:#e0e7ff;color:#3730a3;font-size:12px;font-weight:700}
+.empty{text-align:center;padding:35px;color:var(--muted)}
+.small{font-size:12px}
+@media(max-width:650px){main{padding:12px}.score-row{grid-template-columns:1fr 65px 65px 1fr}.score-row button{grid-column:1/-1}.score-row .vs{display:none}}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🏆 Inter-House Tournament Manager</h1>
+    <p>Volleyball • Football • Kho Kho • Table Tennis • Badminton • Chess • Carroms</p>
+  </div>
+  <div>
+    <button class="auth-btn" id="authButton" onclick="toggleAdmin()"></button>
+  </div>
+</header>
+
+<nav id="sports"></nav>
+
+<main>
+  <div class="toolbar" id="toolbar"></div>
+  <div id="app"></div>
+</main>
+
+<script>
+const SPORTS = ["Volleyball","Football","Kho Kho","Table Tennis","Badminton","Chess","Carroms"];
+const defaultTeams = ["Ganga","Yamuna","Krishna","Kaveri"];
+
+// Change this default PIN to your preferred admin passcode
+const DEFAULT_PIN = "1234";
+
+const state = JSON.parse(localStorage.getItem("tourneyData") || "null") || {
+  currentSport: "Volleyball",
+  teams: defaultTeams,
+  fixtures: [],
+  tab: "dashboard",
+  adminPin: DEFAULT_PIN,
+  points: {},
+  settings: { win: 3, draw: 1, loss: 0 }
+};
+
+let isAdmin = sessionStorage.getItem("isAdminAuthenticated") === "true";
+
+function save() {
+  localStorage.setItem("tourneyData", JSON.stringify(state));
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, m => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
+  }[m]));
+}
+
+function toggleAdmin() {
+  if (isAdmin) {
+    isAdmin = false;
+    sessionStorage.removeItem("isAdminAuthenticated");
+    alert("Logged out of Admin Mode.");
+  } else {
+    const entered = prompt("Enter Admin PIN:");
+    if (entered === (state.adminPin || DEFAULT_PIN)) {
+      isAdmin = true;
+      sessionStorage.setItem("isAdminAuthenticated", "true");
+      alert("Admin access granted.");
+    } else if (entered !== null) {
+      alert("Incorrect PIN.");
+    }
+  }
+  renderHeader();
+  renderToolbar();
+  render();
+}
+
+function renderHeader() {
+  const btn = document.getElementById("authButton");
+  if (isAdmin) {
+    btn.innerHTML = `Admin Mode <span class="auth-badge admin-badge">Unlocked</span> (Logout)`;
+  } else {
+    btn.innerHTML = `Visitor <span class="auth-badge">Locked</span> (Admin Login)`;
+  }
+}
+
+function renderToolbar() {
+  const tb = document.getElementById("toolbar");
+  let html = `
+    <button class="secondary" onclick="showTab('dashboard')">🏠 Home</button>
+    <button class="secondary" onclick="showTab('standings')">📊 Points Table</button>
+    <button class="secondary" onclick="showTab('fixtures')">📅 Fixtures</button>
+  `;
+
+  if (isAdmin) {
+    html += `
+      <button class="primary" onclick="showSetup()">⚙ Setup</button>
+      <button class="secondary" onclick="exportData()">⬇ Export Data</button>
+      <button class="secondary" onclick="document.getElementById('importFile').click()">⬆ Import Data</button>
+      <input id="importFile" type="file" accept=".json" hidden onchange="importData(event)">
+    `;
+  }
+  tb.innerHTML = html;
+}
+
+function init() {
+  document.getElementById("sports").innerHTML = SPORTS.map(
+    s => `<button class="${s === state.currentSport ? 'active' : ''}" onclick="setSport('${s}')">${s}</button>`
+  ).join("");
+  renderHeader();
+  renderToolbar();
+  render();
+}
+
+function setSport(s) {
+  state.currentSport = s;
+  state.tab = "dashboard";
+  save();
+  init();
+}
+
+function showTab(t) {
+  state.tab = t;
+  render();
+}
+
+function render() {
+  const s = state.currentSport;
+  if (state.tab === "standings") return renderStandings();
+  if (state.tab === "fixtures") return renderFixtures();
+
+  document.getElementById("app").innerHTML = `
+    <div class="grid">
+      <div class="card"><span class="badge">${s}</span><h2>Dashboard</h2><div class="stat">${state.teams.length}</div><div class="muted">Teams / Houses</div></div>
+      <div class="card"><h2>Matches</h2><div class="stat">${state.fixtures.filter(f=>f.sport===s).length}</div><div class="muted">Fixtures created</div></div>
+      <div class="card"><h2>Completed</h2><div class="stat">${state.fixtures.filter(f=>f.sport===s&&f.played).length}</div><div class="muted">Results entered</div></div>
+    </div>
+    <br>
+    <div class="card">
+      <h2>Actions</h2>
+      <div class="toolbar">
+        <button class="secondary" onclick="showTab('standings')">View Points Table</button>
+        <button class="secondary" onclick="showTab('fixtures')">View Fixtures</button>
+        ${isAdmin ? '<button class="primary" onclick="generateFixtures()">➕ Generate Round Robin</button>' : ''}
+      </div>
+      <p class="muted small">${isAdmin ? 'You have administrative control to create fixtures and record points.' : 'Viewing in read-only mode. Sign in as admin to update scores.'}</p>
+    </div>`;
+}
+
+function pointsFor(t) {
+  let p = { team: t, pl: 0, w: 0, d: 0, l: 0, for: 0, against: 0, pts: 0 };
+  state.fixtures.filter(f => f.sport === state.currentSport && f.played).forEach(f => {
+    if (f.a !== t && f.b !== t) return;
+    const isA = f.a === t, us = Number(isA ? f.sa : f.sb), them = Number(isA ? f.sb : f.sa);
+    p.pl++; p.for += us; p.against += them;
+    if (us > them) { p.w++; p.pts += Number(state.settings.win); }
+    else if (us === them) { p.d++; p.pts += Number(state.settings.draw); }
+    else { p.l++; p.pts += Number(state.settings.loss); }
+  });
+  return p;
+}
+
+function renderStandings() {
+  const rows = state.teams.map(pointsFor).sort((a,b) => b.pts - a.pts || (b.for - b.against) - (a.for - a.against));
+  document.getElementById("app").innerHTML = `
+    <div class="card">
+      <h2>${state.currentSport} — Points Table</h2>
+      <div class="muted small">Points System: Win = ${state.settings.win}, Draw = ${state.settings.draw}, Loss = ${state.settings.loss}</div><br>
+      <table>
+        <thead><tr><th>#</th><th>House</th><th>MP</th><th>W</th><th>D</th><th>L</th><th>For</th><th>Against</th><th>Diff</th><th>Pts</th></tr></thead>
+        <tbody>
+          ${rows.map((r,i) => `<tr><td>${i+1}</td><td><b>${esc(r.team)}</b></td><td>${r.pl}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td>${r.for}</td><td>${r.against}</td><td>${r.for-r.against}</td><td><b>${r.pts}</b></td></tr>`).join("")}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function renderFixtures() {
+  const fs = state.fixtures.filter(f => f.sport === state.currentSport);
+  document.getElementById("app").innerHTML = `
+    <div class="card">
+      <div class="toolbar">
+        <h2 style="margin:auto 0 auto 0">${state.currentSport} — Fixtures</h2>
+        ${isAdmin ? `<button class="primary" onclick="generateFixtures()">Generate Schedule</button><button class="secondary danger" onclick="clearSport()">Clear Sport</button>` : ''}
+      </div>
+      ${fs.length ? fs.map((f,i) => `
+        <div class="score-row">
+          <b>${esc(f.a)}</b>
+          <input type="number" min="0" value="${f.played ? f.sa : ''}" placeholder="0" id="a${i}" ${!isAdmin ? 'disabled' : ''}>
+          <span class="vs">VS</span>
+          <input type="number" min="0" value="${f.played ? f.sb : ''}" placeholder="0" id="b${i}" ${!isAdmin ? 'disabled' : ''}>
+          <b>${esc(f.b)}</b>${isAdmin 
+            ? `<button class="primary" onclick="saveScore(${state.fixtures.indexOf(f)},'a${i}','b${i}')">${f.played ? 'Update' : 'Save'}</button>` 
+            : `<span class="muted small">${f.played ? 'Final' : 'Pending'}</span>`
+          }
+        </div>`).join("") 
+      : `<div class="empty">No matches scheduled yet.</div>`}
+    </div>`;
+}
+
+function generateFixtures() {
+  if (!isAdmin) return alert("Admin login required.");
+  const existing = state.fixtures.filter(f => f.sport === state.currentSport);
+  if (existing.length && !confirm("Generate additional round-robin fixtures for this sport?")) return;
+  for (let i = 0; i < state.teams.length; i++) {
+    for (let j = i + 1; j < state.teams.length; j++) {
+      state.fixtures.push({ sport: state.currentSport, a: state.teams[i], b: state.teams[j], played: false, sa: "", sb: "" });
+    }
+  }
+  save();
+  showTab("fixtures");
+}
+
+function saveScore(index, aId, bId) {
+  if (!isAdmin) return alert("Admin login required.");
+  const a = document.getElementById(aId).value, b = document.getElementById(bId).value;
+  if (a === "" || b === "") { alert("Please input both scores."); return; }
+  state.fixtures[index].sa = Number(a);
+  state.fixtures[index].sb = Number(b);
+  state.fixtures[index].played = true;
+  save();
+  renderFixtures();
+}
+
+function showSetup() {
+  if (!isAdmin) return alert("Admin login required.");
+  document.getElementById("app").innerHTML = `
+    <div class="card">
+      <h2>Tournament Setup</h2>
+      <h3>Houses / Teams</h3>
+      <div class="form"><input id="teams" value="${esc(state.teams.join(", "))}" placeholder="Ganga, Yamuna, Krishna, Kaveri"></div>
+      <br>
+      <h3>Points System</h3>
+      <div class="form">
+        <label>Win<input id="win" type="number" value="${state.settings.win}"></label>
+        <label>Draw<input id="draw" type="number" value="${state.settings.draw}"></label>
+        <label>Loss<input id="loss" type="number" value="${state.settings.loss}"></label>
+      </div>
+      <br>
+      <h3>Security</h3>
+      <div class="form">
+        <label>Admin PIN<input id="adminPin" type="password" value="${esc(state.adminPin || DEFAULT_PIN)}"></label>
+      </div>
+      <br>
+      <button class="primary" onclick="saveSetup()">Save Configuration</button>
+    </div>`;
+}
+
+function saveSetup() {
+  if (!isAdmin) return;
+  const teams = document.getElementById("teams").value.split(",").map(x => x.trim()).filter(Boolean);
+  const newPin = document.getElementById("adminPin").value.trim();
+  if (teams.length < 2) { alert("Add at least 2 teams."); return; }
+  if (!newPin) { alert("Admin PIN cannot be empty."); return; }
+
+  state.teams = teams;
+  state.adminPin = newPin;
+  state.settings = {
+    win: Number(document.getElementById("win").value),
+    draw: Number(document.getElementById("draw").value),
+    loss: Number(document.getElementById("loss").value)
+  };
+  save();
+  init();
+  alert("Settings saved.");
+}
+
+function clearSport() {
+  if (!isAdmin) return;
+  if (!confirm("Delete all fixtures and scores for " + state.currentSport + "?")) return;
+  state.fixtures = state.fixtures.filter(f => f.sport !== state.currentSport);
+  save();
+  renderFixtures();
+}
+
+function exportData() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "tournament-data.json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function importData(e) {
+  if (!isAdmin) return;
+  const file = e.target.files[0];
+  if (!file) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      Object.assign(state, JSON.parse(r.result));
+      save();
+      init();
+    } catch(err) {
+      alert("Invalid JSON file.");
+    }
+  };
+  r.readAsText(file);
+}
+
+init();
+</script>
+</body>
+</html>
+\
